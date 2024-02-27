@@ -13,3 +13,10 @@ type Line struct {
 	TargetScene    string `thrift:"targetScene,10" form:"targetScene" json:"targetScene" query:"targetScene"`
 	Dependence     string `thrift:"dependence,11" form:"dependence" json:"dependence" query:"dependence"`
 }
+
+type ConfMq struct {
+	User string
+	Pwd  string
+	Addr string
+	Port string
+}
