@@ -33,10 +33,12 @@ type loggingWriter struct {
 }
 
 func (w loggingWriter) Write(b []byte) (int, error) {
-	var line mq.Line
-	_ = json.Unmarshal(b, &line)
-	fmt.Printf("Server: Got '%v'\n", line)
-	w.DataC <- &line
+	var lines []*mq.Line
+	_ = json.Unmarshal(b, &lines)
+	fmt.Printf("Server: Got '%v'\n", lines)
+	for _, line := range lines {
+		w.DataC <- line
+	}
 	return w.Writer.Write(b)
 }
 
