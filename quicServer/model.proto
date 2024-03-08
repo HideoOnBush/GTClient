@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+option go_package = "quicServer/model";
+
+message Line {
+  string doc_id = 1;
+  int64 doc_version = 2;
+  int64 doc_seq_no = 3;
+  int64 doc_primary_term = 4;
+  string source = 5;
+  bool source_is_core = 6;
+  string source_scene = 7;
+  string target = 8;
+  bool target_is_core = 9;
+  string target_scene = 10;
+  string dependence = 11;
+  int64 visit_count = 12;
+}
+
+message LineList {
+  repeated Line messages = 1;
+}

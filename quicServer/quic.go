@@ -1,31 +1,42 @@
 package quicServer
 
 import (
+	"GTClient/etcd"
 	"GTClient/mq"
+	"GTClient/quicServer/model"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"github.com/quic-go/quic-go"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"io"
 	"log"
 	"math/big"
 	"net"
 	"os"
 	"sync"
+	"time"
 )
 
 type QServer struct {
 	*mq.MqChannel
+	*etcd.EtcdClient
+}
+
+type QConfig struct {
+	Addr string
+	Port int
 }
 
 const addr = "localhost:4242"
-
 const message = "foobar"
+
+const serviceName = "GetRelation"
 
 type loggingWriter struct {
 	io.Writer
@@ -33,11 +44,25 @@ type loggingWriter struct {
 }
 
 func (w loggingWriter) Write(b []byte) (int, error) {
-	var lines []*mq.Line
-	_ = json.Unmarshal(b, &lines)
-	fmt.Printf("Server: Got '%v'\n", lines)
-	for _, line := range lines {
-		w.DataC <- line
+	newMessageList := &model.LineList{}
+	err := proto.Unmarshal(b, newMessageList)
+	if err != nil {
+		log.Fatalf("unmarshal in Write failed ,err=%v", err)
+	}
+	//var lines []*mq.Line
+	//_ = json.Unmarshal(b, &lines)
+	fmt.Printf("Server: Got '%v'\n", newMessageList.Messages)
+	for _, line := range newMessageList.Messages {
+		w.DataC <- &mq.Line{
+			Source:       line.Source,
+			SourceIsCore: line.SourceIsCore,
+			SourceScene:  line.SourceScene,
+			Target:       line.Target,
+			TargetIsCore: line.TargetIsCore,
+			TargetScene:  line.TargetScene,
+			Dependence:   line.Dependence,
+			VisitCount:   line.VisitCount,
+		}
 	}
 	return w.Writer.Write(b)
 }
@@ -75,10 +100,11 @@ func In(wg *sync.WaitGroup) error {
 	return err
 }
 
-func InitializeServer(ctx context.Context, mqC *mq.MqChannel, wg *sync.WaitGroup) *QServer {
+func InitializeServer(ctx context.Context, mqC *mq.MqChannel, wg *sync.WaitGroup, client *etcd.EtcdClient, config QConfig) *QServer {
 	q := &QServer{}
+	q.EtcdClient = client
 	q.MqChannel = mqC
-	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{Port: 2234})
+	udpConn, err := net.ListenUDP("udp4", &net.UDPAddr{Port: config.Port})
 	if err != nil {
 		log.Printf("InitializeServer err = %v", err)
 		os.Exit(1)
@@ -94,7 +120,12 @@ func InitializeServer(ctx context.Context, mqC *mq.MqChannel, wg *sync.WaitGroup
 	}
 	wg.Add(1)
 	go func() {
-		defer wg.Done()
+		ctx, cancel := context.WithCancel(ctx)
+		defer func() {
+			cancel()
+			wg.Done()
+		}()
+		go q.PutServiceInEtcd(ctx, serviceName, config.Addr, config.Port)
 		for {
 			conn, err := ln.Accept(ctx)
 			if err != nil {
@@ -124,6 +155,29 @@ func InitializeServer(ctx context.Context, mqC *mq.MqChannel, wg *sync.WaitGroup
 		}
 	}()
 	return q
+}
+
+func (q *QServer) PutServiceInEtcd(ctx context.Context, ServiceName string, Addr string, Port int) {
+	key := fmt.Sprintf("/services/%s/%s:%d", ServiceName, Addr, Port)
+	ticker := time.NewTicker(3 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			leaseResp, err := q.EtcdClient.Grant(context.Background(), 5)
+			if err != nil {
+				log.Printf("%s stop to extend lease in Etcd", ServiceName)
+				return
+			}
+			_, err = q.EtcdClient.Put(context.Background(), key, "exist", clientv3.WithLease(leaseResp.ID))
+			if err != nil {
+				log.Printf("Put failed in Etcd,err=%v", err)
+				return
+			}
+		case <-ctx.Done():
+			log.Printf("%s stop to extend lease in Etcd", ServiceName)
+			return
+		}
+	}
 }
 
 func (q *QServer) generateTLSConfig() *tls.Config {

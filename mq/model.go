@@ -12,6 +12,7 @@ type Line struct {
 	TargetIsCore   bool   `thrift:"targetIsCore,9" form:"targetIsCore" json:"targetIsCore" query:"targetIsCore"`
 	TargetScene    string `thrift:"targetScene,10" form:"targetScene" json:"targetScene" query:"targetScene"`
 	Dependence     string `thrift:"dependence,11" form:"dependence" json:"dependence" query:"dependence"`
+	VisitCount     int64  `thrift:"visitCount,12" form:"visitCount" json:"visitCount" query:"visitCount"`
 }
 
 type ConfMq struct {
