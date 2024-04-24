@@ -35,7 +35,7 @@ func Initial(conf Conf, wg *sync.WaitGroup) *MqChannel {
 		log.Fatalf("bind queue err: %v", err)
 	}
 	m.MqC = ch
-	m.DataC = make(chan *Line, 10)
+	m.DataC = make(chan *Line, conf.ChanSize)
 	wg.Add(1)
 	go m.dataFromChannelToRabbit(wg)
 	return m

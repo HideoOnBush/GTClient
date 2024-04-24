@@ -9,10 +9,11 @@ import (
 
 type (
 	Conf struct {
-		Addr string
-		Port string
-		User string
-		Pwd  string
+		Addr     string
+		Port     string
+		User     string
+		Pwd      string
+		ChanSize int
 	}
 )
 

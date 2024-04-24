@@ -12,10 +12,11 @@ import (
 func main() {
 	var wg sync.WaitGroup
 	conf := mq.Conf{
-		User: "kwq",
-		Pwd:  "123456",
-		Addr: "127.0.0.1",
-		Port: "5672",
+		User:     "kwq",
+		Pwd:      "123456",
+		Addr:     "127.0.0.1",
+		Port:     "5672",
+		ChanSize: 10,
 	}
 	eConf := etcd.EtcdConfig{
 		Host:    []string{"127.0.0.1:2379"},

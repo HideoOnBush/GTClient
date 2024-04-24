@@ -35,7 +35,8 @@ type QConfig struct {
 
 const addr = "localhost:4242"
 const message = "foobar"
-
+const serviceId = 1
+const procedureId = 1
 const serviceName = "GetRelation"
 
 type loggingWriter struct {
@@ -51,7 +52,8 @@ func (w loggingWriter) Write(b []byte) (int, error) {
 	}
 	//var lines []*mq.Line
 	//_ = json.Unmarshal(b, &lines)
-	fmt.Printf("Server: Got '%v'\n", newMessageList.Messages)
+	log.SetFlags(log.Ldate | log.Ltime | log.Llongfile)
+	//fmt.Printf("Server: Got '%v'\n", newMessageList.Messages)
 	for _, line := range newMessageList.Messages {
 		w.DataC <- &mq.Line{
 			Source:       line.Source,
@@ -125,7 +127,8 @@ func InitializeServer(ctx context.Context, mqC *mq.MqChannel, wg *sync.WaitGroup
 			cancel()
 			wg.Done()
 		}()
-		go q.PutServiceInEtcd(ctx, serviceName, config.Addr, config.Port)
+		go q.PutServiceForTracer(ctx, serviceName, serviceId, procedureId)
+		go q.PutServiceForNginx(ctx, serviceName, config.Addr, config.Port)
 		for {
 			conn, err := ln.Accept(ctx)
 			if err != nil {
@@ -157,8 +160,32 @@ func InitializeServer(ctx context.Context, mqC *mq.MqChannel, wg *sync.WaitGroup
 	return q
 }
 
-func (q *QServer) PutServiceInEtcd(ctx context.Context, ServiceName string, Addr string, Port int) {
-	key := fmt.Sprintf("/services/%s/%s:%d", ServiceName, Addr, Port)
+func (q *QServer) PutServiceForNginx(ctx context.Context, ServiceName string, Addr string, Port int) {
+	key := fmt.Sprintf("/host/%s/hosts/%s:%d", ServiceName, Addr, Port)
+	ticker := time.NewTicker(3 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			leaseResp, err := q.EtcdClient.Grant(context.Background(), 5)
+			if err != nil {
+				log.Printf("%s stop to extend lease in Etcd", ServiceName)
+				return
+			}
+			_, err = q.EtcdClient.Put(context.Background(), key, "exist", clientv3.WithLease(leaseResp.ID))
+			if err != nil {
+				log.Printf("Put failed in Etcd,err=%v", err)
+				return
+			}
+		case <-ctx.Done():
+			log.Printf("%s stop to extend lease in Etcd", ServiceName)
+			return
+		}
+	}
+}
+
+func (q *QServer) PutServiceForTracer(ctx context.Context, ServiceName string, serviceID uint32, procedureId uint16) {
+	//put nginx addr and port
+	key := fmt.Sprintf("/service/%s/%d/%d", ServiceName, serviceID, procedureId)
 	ticker := time.NewTicker(3 * time.Second)
 	for {
 		select {
